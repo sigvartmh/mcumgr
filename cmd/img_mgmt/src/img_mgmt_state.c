@@ -18,6 +18,14 @@
  */
 
 #include <assert.h>
+/* TODO: I don't think we can get this upstream */
+#if USE_PARTITION_MANAGER
+#include <pm_config.h>
+#endif
+
+#ifndef CONFIG_UPDATEABLE_IMAGE_NUMBER
+#define CONFIG_UPDATEABLE_IMAGE_NUMBER 1
+#endif
 
 #include "tinycbor/cbor.h"
 #include "cborattr/cborattr.h"
@@ -36,14 +44,18 @@ img_mgmt_state_flags(int query_slot)
     uint8_t flags;
     int swap_type;
 
-    assert(query_slot == 0 || query_slot == 1);
+    assert(query_slot == 0 || query_slot == 1 || query_slot == 3);
 
     flags = 0;
 
     /* Determine if this is is pending or confirmed (only applicable for
      * unified images and loaders.
      */
+#if CONFIG_UPDATEABLE_IMAGE_NUMBER > 1
+    swap_type = img_mgmt_impl_swap_type_multi(query_slot);
+#else
     swap_type = img_mgmt_impl_swap_type();
+#endif
     switch (swap_type) {
     case IMG_MGMT_SWAP_TYPE_NONE:
         if (query_slot == IMG_MGMT_BOOT_CURR_SLOT) {
@@ -205,7 +217,18 @@ img_mgmt_state_read(struct mgmt_ctxt *ctxt)
 
     err |= cbor_encoder_create_array(&ctxt->encoder, &images,
                                        CborIndefiniteLength);
-    for (i = 0; i < 2; i++) {
+    for (i = 0; i < 2*CONFIG_UPDATEABLE_IMAGE_NUMBER; i++) {
+	/*
+	 * TODO: Find a better way of doing this for a simulated flash slot
+	 * The reason why we need to do this is that it tries to open a non-exsistant flash map slot
+	 * resulting in a bus fault.
+	 */
+#if PM_MCUBOOT_PRIMARY_1_ID
+	if ( i == 2) {
+		continue;
+	}
+#endif
+
         rc = img_mgmt_read_info(i, &ver, hash, &flags);
         if (rc != 0) {
             continue;
@@ -270,8 +293,7 @@ img_mgmt_state_write(struct mgmt_ctxt *ctxt)
      * a null character at the end of the buffer.
      */
     uint8_t hash[IMAGE_HASH_LEN + 1];
-    size_t hash_len;
-    bool confirm;
+    size_t hash_len; bool confirm;
     int slot;
     int rc;
 

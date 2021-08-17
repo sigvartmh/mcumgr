@@ -232,11 +232,15 @@ img_mgmt_impl_write_pending(int slot, bool permanent)
 {
     int rc;
 
-    if (slot != 1) {
+    if ((slot != 1) && (slot != 3)) {
         return MGMT_ERR_EINVAL;
     }
 
-    rc = boot_request_upgrade(permanent);
+    int img_index = 0;
+    if (slot > 1) {
+	img_index = 1;
+    }
+    rc = boot_request_upgrade_multi(img_index, permanent);
     if (rc != 0) {
         return MGMT_ERR_EUNKNOWN;
     }
@@ -264,16 +268,21 @@ img_mgmt_impl_read(int slot, unsigned int offset, void *dst,
     const struct flash_area *fa;
     int rc;
 
-    rc = flash_area_open(zephyr_img_mgmt_flash_area_id(slot), &fa);
-    if (rc != 0) {
-      return MGMT_ERR_EUNKNOWN;
-    }
+    int area_id = zephyr_img_mgmt_flash_area_id(slot);
+    if (area_id > 0) {
+	    rc = flash_area_open(area_id, &fa);
+	    if (rc != 0) {
+		    return MGMT_ERR_EUNKNOWN;
+	    }
 
-    rc = flash_area_read(fa, offset, dst, num_bytes);
-    flash_area_close(fa);
+	    rc = flash_area_read(fa, offset, dst, num_bytes);
+	    flash_area_close(fa);
 
-    if (rc != 0) {
-      return MGMT_ERR_EUNKNOWN;
+	    if (rc != 0) {
+		    return MGMT_ERR_EUNKNOWN;
+	    }
+    } else {
+	    return MGMT_ERR_EUNKNOWN;
     }
 
     return 0;
@@ -413,6 +422,24 @@ int img_mgmt_impl_erase_if_needed(uint32_t off, uint32_t len)
 #endif
 
 int
+img_mgmt_impl_swap_type_multi(int slot)
+{
+    switch (mcuboot_swap_type_multi(slot)) {
+    case BOOT_SWAP_TYPE_NONE:
+        return IMG_MGMT_SWAP_TYPE_NONE;
+    case BOOT_SWAP_TYPE_TEST:
+        return IMG_MGMT_SWAP_TYPE_TEST;
+    case BOOT_SWAP_TYPE_PERM:
+        return IMG_MGMT_SWAP_TYPE_PERM;
+    case BOOT_SWAP_TYPE_REVERT:
+        return IMG_MGMT_SWAP_TYPE_REVERT;
+    default:
+        assert(0);
+        return IMG_MGMT_SWAP_TYPE_NONE;
+    }
+}
+
+int
 img_mgmt_impl_swap_type(void)
 {
     switch (mcuboot_swap_type()) {
@@ -506,6 +533,7 @@ img_mgmt_impl_upload_inspect(const struct img_mgmt_upload_req *req,
         }
 
         action->area_id = img_mgmt_get_unused_slot_area_id(req->image - 1);
+	LOG_INF("Area id: %d", action->area_id);
         if (action->area_id < 0) {
             /* No slot where to upload! */
             *errstr = img_mgmt_err_str_no_slot;

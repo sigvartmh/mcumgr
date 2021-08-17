@@ -30,6 +30,10 @@
 #include "img_mgmt_priv.h"
 #include "img_mgmt/img_mgmt_config.h"
 
+#ifndef CONFIG_UPDATEABLE_IMAGE_NUMBER
+#define CONFIG_UPDATEABLE_IMAGE_NUMBER 1
+#endif
+
 static mgmt_handler_fn img_mgmt_upload;
 static mgmt_handler_fn img_mgmt_erase;
 static img_mgmt_upload_fn *img_mgmt_upload_cb;
@@ -109,7 +113,6 @@ int
 img_mgmt_read_info(int image_slot, struct image_version *ver, uint8_t *hash,
                    uint32_t *flags)
 {
-
 #if IMG_MGMT_DUMMY_HDR
     uint8_t dummy_hash[] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
                             0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
@@ -241,7 +244,15 @@ img_mgmt_find_by_ver(struct image_version *find, uint8_t *hash)
     int i;
     struct image_version ver;
 
-    for (i = 0; i < 2; i++) {
+    for (i = 0; i < 2*CONFIG_UPDATEABLE_IMAGE_NUMBER; i++) {
+	/*
+	 * TODO: Find a better way of doing this for a simulated flash slot
+	 * The reason why we need to do this is that it tries to open a non-exsistant flash map slot
+	 * resulting in a bus fault.
+	 */
+	if ( i == 2) {
+		continue;
+	}
         if (img_mgmt_read_info(i, &ver, hash, NULL) != 0) {
             continue;
         }
@@ -261,8 +272,17 @@ img_mgmt_find_by_hash(uint8_t *find, struct image_version *ver)
 {
     int i;
     uint8_t hash[IMAGE_HASH_LEN];
+    for (i = 0; i < 2*CONFIG_UPDATEABLE_IMAGE_NUMBER; i++) {
 
-    for (i = 0; i < 2; i++) {
+	/*
+	 * TODO: Find a better way of doing this for a simulated flash slot
+	 * The reason why we need to do this is that it tries to open a non-exsistant flash map slot
+	 * resulting in a bus fault.
+	 */
+	if (i == 2) {
+	   continue;
+	}
+
         if (img_mgmt_read_info(i, ver, hash, NULL) != 0) {
             continue;
         }
